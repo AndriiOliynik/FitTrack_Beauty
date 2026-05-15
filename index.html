@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FitTrack Pro - Search Edition</title>
+    <style>
+        :root {
+            --brand: #2ecc71;
+            --bg: #f5f7fa;
+            --dark: #2d3436;
+            --white: #ffffff;
+            --shadow: 0 4px 12px rgba(0,0,0,0.08);
+            --accent: #3498db;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { 
+            font-family: -apple-system, sans-serif; 
+            background-color: var(--bg); 
+            margin: 0; 
+            padding: 0 0 90px 0; 
+        }
+        header { padding: 20px; text-align: center; font-weight: bold; font-size: 1.4rem; background: var(--white); }
+        .dashboard-card { 
+            background: linear-gradient(135deg, #2d3436, #4b5a5c); 
+            margin: 15px; padding: 25px; border-radius: 24px; color: white; 
+            box-shadow: 0 10px 20px rgba(0,0,0,0.15); text-align: center;
+        }
+        .date-display input {
+            background: rgba(255,255,255,0.15); border: none; color: white;
+            padding: 10px 15px; border-radius: 12px; font-size: 1rem; margin-bottom: 15px;
+        }
+        .stats-grid { display: flex; justify-content: space-around; margin-bottom: 15px; }
+        .stat-item span { display: block; font-size: 1.8rem; font-weight: bold; }
+        .stat-item small { opacity: 0.7; font-size: 0.7rem; text-transform: uppercase; }
+
+        .limit-card { 
+            background: var(--white); margin: 15px; padding: 15px; border-radius: 20px; 
+            display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow);
+        }
+        .limit-card input { width: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 10px; font-weight: bold; text-align: center; }
+
+        .action-card { background: var(--white); margin: 15px; padding: 20px; border-radius: 20px; box-shadow: var(--shadow); }
+        h3 { margin: 0 0 15px 0; font-size: 0.9rem; color: #b2bec3; text-transform: uppercase; }
+        
+        input, select, button { width: 100%; padding: 12px; margin-bottom: 12px; border-radius: 15px; border: 1px solid #f1f2f6; font-size: 1rem; }
+        .search-input { border: 2px solid var(--brand); background: #f0fff4; }
+        
+        .mode-pills { display: flex; gap: 15px; margin: 10px 0 15px 0; font-size: 0.9rem; }
+        .primary-btn { background: var(--brand); color: white; border: none; font-weight: bold; cursor: pointer; }
+        
+        .food-log { list-style: none; padding: 0; margin: 15px; }
+        .food-log li { 
+            background: white; padding: 15px; border-radius: 15px; margin-bottom: 8px;
+            display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+        }
+        .btn-group { display: flex; gap: 10px; }
+        .del-btn { color: #ff7675; font-size: 1.2rem; cursor: pointer; background: none; border: none; width: auto; padding: 0; margin: 0; }
+        .edit-btn { color: var(--accent); font-size: 1.2rem; cursor: pointer; background: none; border: none; width: auto; padding: 0; margin: 0; }
+
+        .report-section { background: #ebf5fb; padding: 15px; border-radius: 15px; margin-top: 15px; border: 1px dashed var(--accent); display: none; }
+        .backup-btns { display: flex; gap: 10px; margin: 15px; }
+        .backup-btns button { font-size: 0.8rem; padding: 10px; background: #95a5a6; color: white; border: none; }
+
+        .bottom-nav { 
+            position: fixed; bottom: 0; left: 0; right: 0; height: 80px; 
+            background: white; display: flex; border-top: 1px solid #eee; z-index: 1000;
+        }
+        .nav-item { flex: 1; border: none; background: none; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #b2bec3; }
+        .nav-item.active { color: var(--brand); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+</head>
+<body>
+    <header>🍎 FitTrack Pro</header>
+
+    <div class="dashboard-card">
+        <div class="date-display">
+            <input type="date" id="history-date" onchange="updateUI()">
+        </div>
+        <div class="stats-grid">
+            <div class="stat-item"> <span id="total-kcal">0</span> <small>СЪЕДЕНО</small> </div>
+            <div class="stat-item"> <span id="remaining-kcal">2000</span> <small>ОСТАТОК</small> </div>
+        </div>
+    </div>
+
+    <div class="limit-card">
+        <span>Цель (ккал):</span>
+        <input type="number" id="daily-limit" inputmode="decimal" value="2000" onchange="saveLimit()">
+    </div>
+
+    <main id="tab-daily" class="tab-content active">
+        <div class="action-card">
+            <h3>Добавить еду</h3>
+            <input type="text" id="food-search" class="search-input" placeholder="🔍 Быстрый поиск продукта..." oninput="filterFoodList()">
+            
+            <select id="select-food" onchange="updateInputModeUI()">
+                <option value="">Выберите продукт...</option>
+            </select>
+            
+            <div id="entry-controls" style="display:none;">
+                <div class="mode-pills">
+                    <label><input type="radio" name="input-mode" value="portion" checked onchange="updateInputModeUI()"> Порции</label>
+                    <label><input type="radio" name="input-mode" value="grams" onchange="updateInputModeUI()"> Граммы</label>
+                </div>
+                <input type="number" id="amount-input" inputmode="decimal" placeholder="Количество">
+                <button class="primary-btn" onclick="addEntryToDaily()">ДОБАВИТЬ В ДНЕВНИК</button>
+            </div>
+        </div>
+
+        <ul id="daily-log-list" class="food-log"></ul>
+
+        <div class="action-card">
+            <h3>Отчет за период</h3>
+            <div style="display: flex; gap: 10px;">
+                <input type="date" id="report-start">
+                <input type="date" id="report-end">
+            </div>
+            <button onclick="generateReport()" style="background: var(--accent); color: white; border: none; font-weight: bold;">СФОРМИРОВАТЬ ОТЧЕТ</button>
+            <div id="report-result" class="report-section"></div>
+        </div>
+
+        <div class="backup-btns">
+            <button onclick="exportData()">⬇️ Экспорт</button>
+            <button onclick="document.getElementById('import-file').click()">⬆️ Импорт</button>
+            <input type="file" id="import-file" style="display:none" onchange="importData(event)">
+        </div>
+        <div style="text-align: center; margin-bottom: 20px;">
+            <button onclick="clearDailyLogs()" style="background:none; border:none; color:#b2bec3; font-size: 0.8rem;">Очистить день</button>
+        </div>
+    </main>
+
+    <main id="tab-library" class="tab-content">
+        <div class="action-card">
+            <h3 id="lib-form-title">Новый продукт</h3>
+            <input type="hidden" id="edit-index" value="-1">
+            <input type="text" id="lib-name" placeholder="Название">
+            <input type="number" id="lib-kcal" inputmode="decimal" placeholder="ккал/100г">
+            <input type="text" id="lib-portion-name" placeholder="Порция (шт, тарелка...)">
+            <input type="number" id="lib-portion-kcal" inputmode="decimal" placeholder="ккал за одну ПОРЦИЮ">
+            <input type="number" id="lib-portion-weight" inputmode="decimal" placeholder="Вес порции (г)">
+            <button class="primary-btn" id="lib-save-btn" onclick="saveToLibrary()">СОХРАНИТЬ</button>
+            <button id="lib-cancel-btn" style="display:none; background:#ecf0f1; color: #7f8c8d; border:none;" onclick="resetLibForm()">ОТМЕНА</button>
+        </div>
+        <div id="library-list" class="food-log"></div>
+    </main>
+
+    <nav class="bottom-nav">
+        <button class="nav-item active" id="btn-daily" onclick="showTab('daily')">📅<span>Дневник</span></button>
+        <button class="nav-item" id="btn-library" onclick="showTab('library')">📖<span>База</span></button>
+    </nav>
+
+    <script>
+        let foodLibrary = JSON.parse(localStorage.getItem('fittrack_library')) || [];
+        let historyLogs = JSON.parse(localStorage.getItem('fittrack_history')) || {};
+        let dailyLimit = parseInt(localStorage.getItem('fittrack_limit')) || 2000;
+
+        const datePicker = document.getElementById('history-date');
+        datePicker.value = new Date().toLocaleDateString('en-CA');
+
+        function showTab(t) {
+            document.querySelectorAll('.tab-content').forEach(x => x.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
+            document.getElementById('tab-'+t).classList.add('active');
+            document.getElementById('btn-'+t).classList.add('active');
+            if(t !== 'library') resetLibForm();
+        }
+
+        function saveLimit() {
+            dailyLimit = parseInt(document.getElementById('daily-limit').value) || 2000;
+            localStorage.setItem('fittrack_limit', dailyLimit);
+            updateUI();
+        }
+
+        // ФИЛЬТРАЦИЯ СПИСКА
+        function filterFoodList() {
+            const query = document.getElementById('food-search').value.toLowerCase();
+            const sel = document.getElementById('select-food');
+            sel.innerHTML = '<option value="">Выберите продукт...</option>';
+            
+            foodLibrary.forEach((f, i) => {
+                if (f.name.toLowerCase().includes(query)) {
+                    sel.innerHTML += `<option value="${i}">${f.name}</option>`;
+                }
+            });
+            updateInputModeUI();
+        }
+
+        function saveToLibrary() {
+            const idx = parseInt(document.getElementById('edit-index').value);
+            const item = {
+                name: document.getElementById('lib-name').value,
+                kcal: parseFloat(document.getElementById('lib-kcal').value) || 0,
+                pName: document.getElementById('lib-portion-name').value || "шт",
+                pKcal: parseFloat(document.getElementById('lib-portion-kcal').value) || 0,
+                pWeight: parseFloat(document.getElementById('lib-portion-weight').value) || 0
+            };
+            
+            if(item.name && (item.kcal || item.pKcal)) {
+                if(idx === -1) foodLibrary.push(item);
+                else foodLibrary[idx] = item;
+                localStorage.setItem('fittrack_library', JSON.stringify(foodLibrary));
+                resetLibForm();
+                updateUI();
+            }
+        }
+
+        function editFromLibrary(i) {
+            const f = foodLibrary[i];
+            document.getElementById('edit-index').value = i;
+            document.getElementById('lib-name').value = f.name;
+            document.getElementById('lib-kcal').value = f.kcal;
+            document.getElementById('lib-portion-name').value = f.pName;
+            document.getElementById('lib-portion-kcal').value = f.pKcal;
+            document.getElementById('lib-portion-weight').value = f.pWeight;
+            document.getElementById('lib-form-title').innerText = "Редактировать";
+            document.getElementById('lib-save-btn').innerText = "ОБНОВИТЬ";
+            document.getElementById('lib-cancel-btn').style.display = "block";
+            showTab('library');
+            window.scrollTo(0,0);
+        }
+
+        function resetLibForm() {
+            document.getElementById('edit-index').value = "-1";
+            ['lib-name','lib-kcal','lib-portion-name','lib-portion-kcal','lib-portion-weight'].forEach(id => document.getElementById(id).value = '');
+            document.getElementById('lib-form-title').innerText = "Новый продукт";
+            document.getElementById('lib-save-btn').innerText = "СОХРАНИТЬ";
+            document.getElementById('lib-cancel-btn').style.display = "none";
+        }
+
+        function updateInputModeUI() {
+            const select = document.getElementById('select-food');
+            const controls = document.getElementById('entry-controls');
+            if (!select.value) { controls.style.display = "none"; return; }
+            controls.style.display = "block";
+            const food = foodLibrary[select.value];
+            const mode = document.querySelector('input[name="input-mode"]:checked').value;
+            document.getElementById('amount-input').placeholder = (mode === 'portion') ? `Кол-во ${food.pName}` : "Вес в граммах";
+        }
+
+        function addEntryToDaily() {
+            const s = document.getElementById('select-food').value;
+            const a = parseFloat(document.getElementById('amount-input').value);
+            const mode = document.querySelector('input[name="input-mode"]:checked').value;
+            const d = datePicker.value;
+            
+            if(s !== "" && a) {
+                const f = foodLibrary[s];
+                let kcal = mode === 'portion' ? Math.round(f.pKcal * a) : Math.round((f.kcal / 100) * a);
+                let label = mode === 'portion' ? `${f.name} (${a} ${f.pName})` : `${f.name} (${a}г)`;
+
+                if(!historyLogs[d]) historyLogs[d] = [];
+                historyLogs[d].push({label: label, kcal: kcal});
+                localStorage.setItem('fittrack_history', JSON.stringify(historyLogs));
+                document.getElementById('amount-input').value = '';
+                document.getElementById('food-search').value = ''; // Сброс поиска
+                updateUI();
+            }
+        }
+
+        function generateReport() {
+            const start = document.getElementById('report-start').value;
+            const end = document.getElementById('report-end').value;
+            const res = document.getElementById('report-result');
+            if(!start || !end) return;
+            let total = 0;
+            let html = `<strong>Отчет:</strong><hr>`;
+            Object.keys(historyLogs).sort().forEach(date => {
+                if(date >= start && date <= end) {
+                    let daySum = historyLogs[date].reduce((s, item) => s + item.kcal, 0);
+                    total += daySum;
+                    html += `<div>${date}: ${daySum} ккал</div>`;
+                }
+            });
+            html += `<hr><strong>ИТОГО: ${total}</strong>`;
+            res.innerHTML = html; res.style.display = "block";
+        }
+
+        function exportData() {
+            const data = { library: foodLibrary, history: historyLogs, limit: dailyLimit };
+            const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `fittrack_backup.json`;
+            a.click();
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    foodLibrary = imported.library || [];
+                    historyLogs = imported.history || {};
+                    dailyLimit = imported.limit || 2000;
+                    localStorage.setItem('fittrack_library', JSON.stringify(foodLibrary));
+                    localStorage.setItem('fittrack_history', JSON.stringify(historyLogs));
+                    localStorage.setItem('fittrack_limit', dailyLimit);
+                    updateUI();
+                } catch (err) { alert("Ошибка файла"); }
+            };
+            reader.readAsText(file);
+        }
+
+        function deleteFromLibrary(i) {
+            if(confirm("Удалить?")) {
+                foodLibrary.splice(i, 1);
+                localStorage.setItem('fittrack_library', JSON.stringify(foodLibrary));
+                updateUI();
+            }
+        }
+
+        function clearDailyLogs() {
+            if(confirm("Удалить записи?")) {
+                delete historyLogs[datePicker.value];
+                localStorage.setItem('fittrack_history', JSON.stringify(historyLogs));
+                updateUI();
+            }
+        }
+
+        function updateUI() {
+            const d = datePicker.value;
+            const logList = document.getElementById('daily-log-list');
+            const libList = document.getElementById('library-list');
+            
+            // Сбрасываем фильтр поиска при общей отрисовке
+            filterFoodList();
+
+            libList.innerHTML = '';
+            foodLibrary.forEach((f, i) => {
+                libList.innerHTML += `<li>
+                    <div><strong>${f.name}</strong><br><small>${f.kcal}к/100г | <b>${f.pKcal}к/${f.pName}</b></small></div>
+                    <div class="btn-group">
+                        <button class="edit-btn" onclick="editFromLibrary(${i})">✎</button>
+                        <button class="del-btn" onclick="deleteFromLibrary(${i})">✕</button>
+                    </div>
+                </li>`;
+            });
+
+            logList.innerHTML = '';
+            let t = 0;
+            (historyLogs[d] || []).forEach(l => {
+                t += l.kcal;
+                logList.innerHTML += `<li><span>${l.label}</span> <strong>${l.kcal} ккал</strong></li>`;
+            });
+            document.getElementById('total-kcal').innerText = t;
+            document.getElementById('daily-limit').value = dailyLimit;
+            document.getElementById('remaining-kcal').innerText = dailyLimit - t;
+        }
+        updateUI();
+    </script>
+</body>
+</html>
