@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>FitTrack Pro - Diary Editor Edition</title>
+    <title>FitTrack Pro - Diary Editor Fixed</title>
     <style>
         :root {
             --brand: #2ecc71;
@@ -250,7 +250,6 @@
                 let label = mode === 'portion' ? `${f.name} (${a} ${f.pName})` : `${f.name} (${a}г)`;
 
                 if(!historyLogs[d]) historyLogs[d] = [];
-                // Дополнительно сохраняем метаданные для возможности редактирования записи дневника
                 historyLogs[d].push({label: label, kcal: kcal, libIndex: s, mode: mode, amount: a});
                 localStorage.setItem('fittrack_history', JSON.stringify(historyLogs));
                 document.getElementById('amount-input').value = '';
@@ -259,20 +258,25 @@
             }
         }
 
-        // РЕДАКТИРОВАНИЕ ЗАПИСИ ИЗ ДНЕВНИКА
+        // ИСПРАВЛЕННАЯ ФУНКЦИЯ РЕДАКТИРОВАНИЯ
         function editDailyLog(entryIndex) {
             const d = datePicker.value;
             const entry = historyLogs[d][entryIndex];
             
-            // Если индекс продукта в базе все еще актуален
             if(foodLibrary[entry.libIndex]) {
+                // 1. Сначала удаляем старую запись из данных и полностью обновляем UI
+                historyLogs[d].splice(entryIndex, 1);
+                if(historyLogs[d].length === 0) delete historyLogs[d];
+                localStorage.setItem('fittrack_history', JSON.stringify(historyLogs));
+                updateUI(); 
+                
+                // 2. Теперь, когда DOM чистый, заполняем форму заново
                 document.getElementById('food-search').value = '';
-                filterFoodList();
+                filterFoodList(); // Восстановит весь select
                 
                 document.getElementById('select-food').value = entry.libIndex;
-                updateInputModeUI();
                 
-                // Выставляем правильный радио-баттон (порция или граммы)
+                // Ставим правильный переключатель (порция/граммы)
                 document.querySelectorAll('input[name="input-mode"]').forEach(radio => {
                     if(radio.value === entry.mode) radio.checked = true;
                 });
@@ -280,15 +284,16 @@
                 updateInputModeUI();
                 document.getElementById('amount-input').value = entry.amount;
                 
-                // Удаляем старую запись, чтобы после добавления обновленной не было дубля
-                deleteDailyLog(entryIndex, false);
-                window.scrollTo(0, document.getElementById('food-search').offsetTop);
+                // Скроллим к форме добавления
+                window.scrollTo({
+                    top: document.getElementById('food-search').offsetTop - 20,
+                    behavior: 'smooth'
+                });
             } else {
                 alert("Этот продукт был удален из базы, редактирование невозможно.");
             }
         }
 
-        // ВЫБОРКОВОЕ УДАЛЕНИЕ ИЗ ДНЕВНИКА
         function deleteDailyLog(entryIndex, askConfirm = true) {
             if(!askConfirm || confirm("Удалить эту запись из дневника?")) {
                 const d = datePicker.value;
