@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>FitTrack Pro - Diary Editor Fixed</title>
+    <title>FitTrack Pro - Diary Editor Fixed + Weight Carryover</title>
     <style>
         :root {
             --brand: #2ecc71;
@@ -34,6 +34,8 @@
         .stat-item span { display: block; font-size: 1.8rem; font-weight: bold; }
         .stat-item small { opacity: 0.7; font-size: 0.7rem; text-transform: uppercase; }
 
+        .weight-btn { background: none; border: none; color: var(--brand); cursor: pointer; font-size: 0.9rem; display: inline; width: auto; padding: 0; margin-left: 5px; }
+
         .limit-card { 
             background: var(--white); margin: 15px; padding: 15px; border-radius: 20px; 
             display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow);
@@ -62,6 +64,9 @@
         .backup-btns { display: flex; gap: 10px; margin: 15px; }
         .backup-btns button { font-size: 0.8rem; padding: 10px; background: #95a5a6; color: white; border: none; }
 
+        .chart-container { width: 100%; height: 200px; background: #fafafa; border-radius: 15px; padding: 10px; border: 1px solid #eee; margin-top: 10px; }
+        .chart-svg { width: 100%; height: 100%; overflow: visible; }
+
         .bottom-nav { 
             position: fixed; bottom: 0; left: 0; right: 0; height: 80px; 
             background: white; display: flex; border-top: 1px solid #eee; z-index: 1000;
@@ -82,6 +87,7 @@
         <div class="stats-grid">
             <div class="stat-item"> <span id="total-kcal">0</span> <small>СЪЕДЕНО</small> </div>
             <div class="stat-item"> <span id="remaining-kcal">2000</span> <small>ОСТАТОК</small> </div>
+            <div class="stat-item"> <span><span id="current-weight-display">—</span><button class="weight-btn" onclick="promptWeight()">✏️</button></span> <small>ВЕС (КГ)</small> </div>
         </div>
     </div>
 
@@ -146,18 +152,42 @@
         <div id="library-list" class="food-log"></div>
     </main>
 
+    <main id="tab-weight" class="tab-content">
+        <div class="action-card">
+            <h3>Ввод веса</h3>
+            <input type="date" id="weight-entry-date">
+            <input type="number" id="weight-entry-value" step="0.1" inputmode="decimal" placeholder="Вес в кг">
+            <button class="primary-btn" onclick="saveWeightForm()" style="background: var(--accent);">СОХРАНИТЬ ВЕС</button>
+        </div>
+
+        <div class="action-card">
+            <h3>График веса</h3>
+            <div class="chart-container">
+                <svg id="weight-chart" class="chart-svg"></svg>
+            </div>
+        </div>
+
+        <div class="action-card">
+            <h3>История веса</h3>
+            <ul id="weight-history-list" class="food-log" style="margin:0;"></ul>
+        </div>
+    </main>
+
     <nav class="bottom-nav">
         <button class="nav-item active" id="btn-daily" onclick="showTab('daily')">📅<span>Дневник</span></button>
         <button class="nav-item" id="btn-library" onclick="showTab('library')">📖<span>База</span></button>
+        <button class="nav-item" id="btn-weight" onclick="showTab('weight')">⚖️<span>Вес</span></button>
     </nav>
 
     <script>
         let foodLibrary = JSON.parse(localStorage.getItem('fittrack_library')) || [];
         let historyLogs = JSON.parse(localStorage.getItem('fittrack_history')) || {};
         let dailyLimit = parseInt(localStorage.getItem('fittrack_limit')) || 2000;
+        let weightHistory = JSON.parse(localStorage.getItem('fittrack_weight')) || {};
 
         const datePicker = document.getElementById('history-date');
         datePicker.value = new Date().toLocaleDateString('en-CA');
+        document.getElementById('weight-entry-date').value = datePicker.value;
 
         function showTab(t) {
             document.querySelectorAll('.tab-content').forEach(x => x.classList.remove('active'));
@@ -165,6 +195,10 @@
             document.getElementById('tab-'+t).classList.add('active');
             document.getElementById('btn-'+t).classList.add('active');
             if(t !== 'library') resetLibForm();
+            if(t === 'weight') {
+                document.getElementById('weight-entry-date').value = datePicker.value;
+                renderWeightTab();
+            }
         }
 
         function saveLimit() {
@@ -258,25 +292,21 @@
             }
         }
 
-        // ИСПРАВЛЕННАЯ ФУНКЦИЯ РЕДАКТИРОВАНИЯ
         function editDailyLog(entryIndex) {
             const d = datePicker.value;
             const entry = historyLogs[d][entryIndex];
             
             if(foodLibrary[entry.libIndex]) {
-                // 1. Сначала удаляем старую запись из данных и полностью обновляем UI
                 historyLogs[d].splice(entryIndex, 1);
                 if(historyLogs[d].length === 0) delete historyLogs[d];
                 localStorage.setItem('fittrack_history', JSON.stringify(historyLogs));
                 updateUI(); 
                 
-                // 2. Теперь, когда DOM чистый, заполняем форму заново
                 document.getElementById('food-search').value = '';
-                filterFoodList(); // Восстановит весь select
+                filterFoodList(); 
                 
                 document.getElementById('select-food').value = entry.libIndex;
                 
-                // Ставим правильный переключатель (порция/граммы)
                 document.querySelectorAll('input[name="input-mode"]').forEach(radio => {
                     if(radio.value === entry.mode) radio.checked = true;
                 });
@@ -284,7 +314,6 @@
                 updateInputModeUI();
                 document.getElementById('amount-input').value = entry.amount;
                 
-                // Скроллим к форме добавления
                 window.scrollTo({
                     top: document.getElementById('food-search').offsetTop - 20,
                     behavior: 'smooth'
@@ -302,6 +331,99 @@
                 localStorage.setItem('fittrack_history', JSON.stringify(historyLogs));
                 updateUI();
             }
+        }
+
+        function promptWeight() {
+            const curDate = datePicker.value;
+            const oldW = weightHistory[curDate] || "";
+            const w = prompt(`Введите вес в кг для даты ${curDate}:`, oldW);
+            if (w !== null) {
+                const val = parseFloat(w);
+                if (val > 0) weightHistory[curDate] = val;
+                else delete weightHistory[curDate];
+                localStorage.setItem('fittrack_weight', JSON.stringify(weightHistory));
+                updateUI();
+                if(document.getElementById('tab-weight').classList.contains('active')) renderWeightTab();
+            }
+        }
+
+        function saveWeightForm() {
+            const d = document.getElementById('weight-entry-date').value;
+            const w = parseFloat(document.getElementById('weight-entry-value').value);
+            if(d && w > 0) {
+                weightHistory[d] = w;
+                localStorage.setItem('fittrack_weight', JSON.stringify(weightHistory));
+                document.getElementById('weight-entry-value').value = '';
+                updateUI();
+                renderWeightTab();
+            }
+        }
+
+        function editWeight(d) {
+            document.getElementById('weight-entry-date').value = d;
+            document.getElementById('weight-entry-value').value = weightHistory[d];
+            window.scrollTo(0,0);
+        }
+
+        function deleteWeight(d) {
+            if(confirm(`Удалить запись веса за ${d}?`)) {
+                delete weightHistory[d];
+                localStorage.setItem('fittrack_weight', JSON.stringify(weightHistory));
+                updateUI();
+                renderWeightTab();
+            }
+        }
+
+        function renderWeightTab() {
+            const listEl = document.getElementById('weight-history-list');
+            listEl.innerHTML = '';
+            const sortedDates = Object.keys(weightHistory).sort();
+            
+            sortedDates.forEach(d => {
+                listEl.innerHTML += `<li>
+                    <span><strong>${d}</strong>: ${weightHistory[d]} кг</span>
+                    <div class="btn-group">
+                        <button class="edit-btn" onclick="editWeight('${d}')">✎</button>
+                        <button class="del-btn" onclick="deleteWeight('${d}')">✕</button>
+                    </div>
+                </li>`;
+            });
+
+            const svg = document.getElementById('weight-chart');
+            svg.innerHTML = '';
+            if(sortedDates.length < 2) {
+                svg.innerHTML = `<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#aaa" font-size="12">Нужно минимум 2 записи для графика</text>`;
+                return;
+            }
+
+            const weights = sortedDates.map(d => weightHistory[d]);
+            const minW = Math.min(...weights) - 1;
+            const maxW = Math.max(...weights) + 1;
+            const diffW = maxW - minW || 1;
+
+            const width = svg.clientWidth || 300;
+            const height = svg.clientHeight || 180;
+            const padding = 25;
+
+            let points = [];
+            sortedDates.forEach((d, idx) => {
+                const x = padding + (idx / (sortedDates.length - 1)) * (width - padding * 2);
+                const y = height - padding - ((weightHistory[d] - minW) / diffW) * (height - padding * 2);
+                points.push({x, y, date: d, val: weightHistory[d]});
+            });
+
+            let pathD = `M ${points[0].x} ${points[0].y}`;
+            for(let i=1; i<points.length; i++) pathD += ` L ${points[i].x} ${points[i].y}`;
+
+            svg.innerHTML += `<path d="${pathD}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`;
+
+            points.forEach((p, idx) => {
+                svg.innerHTML += `<circle cx="${p.x}" cy="${p.y}" r="4" fill="var(--dark)" stroke="white" stroke-width="1"/>`;
+                svg.innerHTML += `<text x="${p.x}" y="${p.y - 8}" font-size="10" font-weight="bold" fill="var(--dark)" text-anchor="middle">${p.val}</text>`;
+                if(idx === 0 || idx === points.length - 1 || points.length <= 5) {
+                    svg.innerHTML += `<text x="${p.x}" y="${height - 4}" font-size="9" fill="#95a5a6" text-anchor="middle">${p.date.substring(5)}</text>`;
+                }
+            });
         }
 
         function generateReport() {
@@ -323,7 +445,7 @@
         }
 
         function exportData() {
-            const data = { library: foodLibrary, history: historyLogs, limit: dailyLimit };
+            const data = { library: foodLibrary, history: historyLogs, limit: dailyLimit, weight: weightHistory };
             const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
@@ -341,10 +463,14 @@
                     foodLibrary = imported.library || [];
                     historyLogs = imported.history || {};
                     dailyLimit = imported.limit || 2000;
+                    weightHistory = imported.weight || {};
+                    
                     localStorage.setItem('fittrack_library', JSON.stringify(foodLibrary));
                     localStorage.setItem('fittrack_history', JSON.stringify(historyLogs));
                     localStorage.setItem('fittrack_limit', dailyLimit);
+                    localStorage.setItem('fittrack_weight', JSON.stringify(weightHistory));
                     updateUI();
+                    if(document.getElementById('tab-weight').classList.contains('active')) renderWeightTab();
                 } catch (err) { alert("Ошибка файла"); }
             };
             reader.readAsText(file);
@@ -399,6 +525,27 @@
             document.getElementById('total-kcal').innerText = t;
             document.getElementById('daily-limit').value = dailyLimit;
             document.getElementById('remaining-kcal').innerText = dailyLimit - t;
+
+            /* --- ОБНОВЛЕННАЯ ЛОГИКА ОПРЕДЕЛЕНИЯ ВЕСА --- */
+            let displayWeight = "—";
+            
+            if (weightHistory[d]) {
+                // Если за выбранный день есть точные данные, берем их
+                displayWeight = weightHistory[d];
+            } else {
+                // Если данных за этот день нет, ищем ближайший заполненный день в ПРОШЛОМ
+                const pastDates = Object.keys(weightHistory)
+                    .filter(dateKey => dateKey < d) // берем только даты, которые раньше выбранной
+                    .sort(); // сортируем по хронологии
+                
+                if (pastDates.length > 0) {
+                    const lastRecordedDate = pastDates[pastDates.length - 1]; // берем самую свежую из прошлых
+                    displayWeight = weightHistory[lastRecordedDate];
+                }
+            }
+            
+            document.getElementById('current-weight-display').innerText = displayWeight;
+            /* ------------------------------------------- */
         }
         updateUI();
     </script>
